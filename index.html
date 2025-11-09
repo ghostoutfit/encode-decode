@@ -14,11 +14,28 @@
     <button id="tab-decode">Decode</button>
   </nav>
 
-  <div id="encode-view" class="view">
-    <textarea id="encode-input" placeholder="Enter text to encode"></textarea>
-    <button id="encode-btn">Encode</button>
-    <pre id="encode-output"></pre>
+<div id="encode-view" class="view">
+  <h2>Encode</h2>
+
+  <div id="char-grid" class="grid-10">
+    <input maxlength="1" class="char" />
+    <input maxlength="1" class="char" />
+    <input maxlength="1" class="char" />
+    <input maxlength="1" class="char" />
+    <input maxlength="1" class="char" />
+    <input maxlength="1" class="char" />
+    <input maxlength="1" class="char" />
+    <input maxlength="1" class="char" />
+    <input maxlength="1" class="char" />
+    <input maxlength="1" class="char" />
   </div>
+
+  <button id="encode-btn">Encode</button>
+
+  <h3>Encoded numbers</h3>
+  <pre id="encode-output"></pre>
+</div>
+
 
   <div id="decode-view" class="view hidden">
     <textarea id="decode-input" placeholder="Enter code to decode"></textarea>

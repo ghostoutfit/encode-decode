@@ -4,6 +4,12 @@ import { ascii7BitsForText } from "./ascii.js";
 
 let noiseInterval = null;
 
+//For freezing noise values
+let isFrozen = false;
+const freezeBtn = document.getElementById('freeze-btn');
+const copyNoisyBtn = document.getElementById('copy-noisy-btn');
+const copyStatus = document.getElementById('copy-status');
+
 
 // map bit → physical level
 function bitToLevel(b) {
@@ -15,23 +21,147 @@ function clamp(v, lo, hi) {
   return Math.min(hi, Math.max(lo, v));
 }
 
+// Binary centers and threshold (unchanged)
+const BINARY_LOW = 2.0, BINARY_HIGH = 8.0, THRESH = 5.0;
+
+// 32-level direct character→level mapping (indices 1..32)
+const STEP32 = 0.309375; // 32 * STEP32 = 9.9
+const INDEX_TO_CHAR = [
+  null, // pad to make 1-based
+  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',' ', '!', '?', ',', '.', '&'
+];
+const CHAR_TO_INDEX = Object.fromEntries(INDEX_TO_CHAR
+  .map((ch,i)=>[ch,i]).filter(([ch,i])=>ch && i>=1));
+
+// level for index i (1..32): i * STEP32
+function indexToLevel(i) { return i * STEP32; }
+
+// nearest index from a numeric level value
+function levelToNearestIndex(v) {
+  let i = Math.round(v / STEP32);
+  if (i < 1) i = 1;
+  if (i > 32) i = 32;
+  return i;
+}
+
+//To help auto-copy
+async function copyTextFrom(elId) {
+  const text = (document.getElementById(elId)?.textContent || "").trim();
+  if (!text) return false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    }
+  } catch { return false; }
+}
+
+function showCopyStatus(msg, ok=true) {
+  if (!copyStatus) return;
+  copyStatus.textContent = msg;
+  copyStatus.style.color = ok ? '#2b6' : '#c00';
+  copyStatus.classList.remove('hidden');
+  setTimeout(()=>copyStatus.classList.add('hidden'), 1200);
+}
+
+
+
+const modeEncodeSel = document.getElementById('mode-encode');
+const modeDecodeSel = document.getElementById('mode-decode');
+
+
+function updateNoisyFromClean() {
+  if (isFrozen) { renderGraph(); return; }
+
+  const clean = document.getElementById('encode-output').textContent;
+  if (!clean || !clean.trim()) { renderGraph(); return; }
+
+  const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
+  const decimals = (mode === 'binary7') ? 1 : 2;
+  const amp = Number(noiseSlider?.value || 0);
+
+  document.getElementById('encode-output-noisy').textContent =
+    addNoise(clean, amp, decimals);
+
+  renderGraph();
+}
+
+
+
+
+
+//Tried and failed to make the disallowed characters turn red.
+const ALLOWED_REGEX = /^[A-Z !\?\.,&]$/; // one char: A–Z, space, ! ? , . &
+
+function validateInputs() {
+  const inputs = Array.from(document.querySelectorAll('#char-grid .char'));
+  const invalids = [];
+
+  const cleaned = inputs.map((i, idx) => {
+    const raw = (i.value || "").slice(0,1);
+    const up = raw.toUpperCase();
+
+    if (!raw) {
+      i.classList.remove('invalid');
+      return "";
+    }
+
+    if (ALLOWED_REGEX.test(up)) {
+      i.classList.remove('invalid');
+      i.value = up;
+      return up;
+    } else {
+      i.classList.add('invalid');   // ← apply highlight
+      invalids.push({ idx: idx + 1, ch: raw });
+      return "";
+    }
+  });
+
+  const box = document.getElementById('char-errors');
+  if (invalids.length > 0) {
+    box.textContent = `Only A–Z, space, ! ? , . & allowed. Invalid: ` +
+                      invalids.map(o => `${o.idx}:"${o.ch}"`).join(", ");
+    box.classList.remove('hidden');
+    return { ok: false, text: cleaned.join("") };
+  } else {
+    box.textContent = "";
+    box.classList.add('hidden');
+    return { ok: true, text: cleaned.join("") };
+  }
+}
+
+document.querySelectorAll('#char-grid .char').forEach(el => {
+  el.addEventListener('input', validateInputs);
+});
+
+
+
+function fmt(n, decimals) { return n.toFixed(decimals); }
+
 // apply noise U[-Δ, +Δ]
-function addNoise(levelString, amp) {
-  if (!levelString.trim()) return "";
-
-  // split into lines first
+function addNoise(levelString, amp, decimals) {
+  if (!levelString || !levelString.trim()) return "";
   const lines = levelString.trim().split(/\n+/);
-
   return lines.map(line => {
     const nums = line.trim().split(/\s+/).map(parseFloat);
     const noisy = nums.map(x => {
-      const jitter = (Math.random() * 2 - 1) * amp;   // U[-amp, +amp]
+      const jitter = (Math.random() * 2 - 1) * amp;
       const y = clamp(x + jitter, 0.0, 9.9);
-      return y.toFixed(1);
+      return y.toFixed(decimals);
     });
     return noisy.join(" ");
-  }).join("\n");   // <-- put the newline back
+  }).join("\n");
 }
+
+
 
 function parseLevels(s) {
   if (!s || !s.trim()) return [];
@@ -45,18 +175,23 @@ function repeatEach(arr, K) {
   return out;
 }
 
-// fast noise that changes every sub-sample (K times per symbol)
-function makeFastNoiseTrace(symbolLevels, amp, K) {
+// fast noise for the GRAPH; optionally avoid rounding for smoothness
+function makeFastNoiseTrace(symbolLevels, amp, K, noRound=false, decimals=1) {
   const out = [];
   for (const v of symbolLevels) {
     for (let i = 0; i < K; i++) {
-      const jitter = (Math.random() * 2 - 1) * amp; // U[-amp,+amp]
+      const jitter = (Math.random() * 2 - 1) * amp;
       const y = clamp(v + jitter, 0.0, 9.9);
-      out.push(Number(y.toFixed(1)));
+      out.push(noRound ? y : Number(y.toFixed(decimals)));
     }
   }
   return out;
 }
+
+// Run validation whenever a box changes
+document.querySelectorAll('#char-grid .char').forEach(el => {
+  el.addEventListener('input', validateInputs);
+});
 
 
 
@@ -128,82 +263,130 @@ function drawSignal(canvas, cleanArr, noisyArr) {
   plotStep(noisyArr, '#000'); // noisy in black
 }
 
-function renderGraph() {
-  const canvas = document.getElementById('signal');
-  if (!canvas) return;
+function computeKForXResolution(symbolCount, canvasWidth) {
+  const mL = 40, mR = 10;
+  const w = Math.max(1, canvasWidth - mL - mR);
+  const DX_TARGET = 1.5;          // 1–2 px looks smooth
 
-  const cleanText = document.getElementById('encode-output').textContent;
-  const noisyText = document.getElementById('encode-output-noisy').textContent;
-  const amp = Number(document.getElementById('noise')?.value || 0);
+  let k;
+  if (symbolCount <= 1) {
+    k = Math.ceil(w / DX_TARGET); // fill width with dense samples
+  } else {
+    k = Math.ceil(w / ((symbolCount - 1) * DX_TARGET));
+  }
 
-  // parse the **symbol-rate** sequences (one value per bit)
-  const cleanSymbols = parseLevels(cleanText);
-
-  // oversample factor: fast noise updates within each symbol
-  const K = 24; // noise changes 8× faster than symbol steps
-
-  // clean step trace: repeat each symbol K times so it looks like a square hold
-  const cleanTrace = repeatEach(cleanSymbols, K);
-
-  // noisy fast trace: add new noise every sub-sample
-  const noisyTrace = makeFastNoiseTrace(cleanSymbols, amp, K);
-
-  drawSignal(canvas, cleanTrace, noisyTrace);
+  const MIN_K = 8;
+  const MAX_K = 1200;             // raise ceiling for 1-symbol case
+  return Math.max(MIN_K, Math.min(MAX_K, k));
 }
 
 
 
+function renderGraph() {
+  const canvas = document.getElementById('signal');
+  if (!canvas) return;
+
+  const amp = Number(document.getElementById('noise')?.value || 0);
+  const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
+  const decimals = (mode === 'binary7') ? 1 : 2;
+
+  const cleanText = document.getElementById('encode-output').textContent;
+  const cleanSymbols = parseLevels(cleanText);
+  if (cleanSymbols.length === 0) { drawSignal(canvas, [], []); return; }
+
+  const K = computeKForXResolution(cleanSymbols.length, canvas.width);
+  const cleanTrace = repeatEach(cleanSymbols, K);
+  const noisyTrace = makeFastNoiseTrace(cleanSymbols, amp, K, /*noRound=*/true, decimals);
+
+  drawSignal(canvas, cleanTrace, noisyTrace);
+}
+
+modeEncodeSel.addEventListener('change', () => { modeDecodeSel.value = modeEncodeSel.value; renderGraph(); });
+modeDecodeSel.addEventListener('change', () => { modeEncodeSel.value = modeDecodeSel.value; renderGraph(); });
 
 
-// Tab switcher (keep whatever you already had)
-document.getElementById('tab-encode').onclick = () => {
-  document.getElementById('encode-view').classList.remove('hidden');
-  document.getElementById('decode-view').classList.add('hidden');
+//Tab switching
+const tabEncode = document.getElementById('tab-encode');
+const tabDecode = document.getElementById('tab-decode');
+const encodeView = document.getElementById('encode-view');
+const decodeView = document.getElementById('decode-view');
+
+tabEncode.onclick = () => {
+  // tab visuals
+  tabEncode.classList.add('active');
+  tabDecode.classList.remove('active');
+
+  // panel visibility + background state
+  encodeView.classList.remove('hidden', 'inactive-panel');
+  encodeView.classList.add('active-panel');
+
+  decodeView.classList.add('hidden', 'inactive-panel');
+  decodeView.classList.remove('active-panel');
+  renderGraph();
 };
-document.getElementById('tab-decode').onclick = () => {
-  document.getElementById('decode-view').classList.remove('hidden');
-  document.getElementById('encode-view').classList.add('hidden');
+
+tabDecode.onclick = () => {
+  // tab visuals
+  tabDecode.classList.add('active');
+  tabEncode.classList.remove('active');
+
+  // panel visibility + background state
+  decodeView.classList.remove('hidden', 'inactive-panel');
+  decodeView.classList.add('active-panel');
+
+  encodeView.classList.add('hidden', 'inactive-panel');
+  encodeView.classList.remove('active-panel');
 };
 
 
 document.getElementById('encode-btn').onclick = () => {
-  const inputs = Array.from(document.querySelectorAll('#char-grid .char'));
-  const rawText = inputs.map(i => (i.value || "").slice(0,1)).join("");
+  //unfreeze noise if frozen
+  setFrozen(false);
+  const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
+  const v = validateInputs();
+  if (!v.ok) {
+    // clear outputs and graph if invalid
+    document.getElementById('encode-output').textContent = "";
+    document.getElementById('encode-output-noisy').textContent = "";
+    renderGraph();
+    return; // stop; user must fix red boxes
+  }
+  const rawText = v.text; // already uppercased and filtered
 
-  const bits = ascii7BitsForText(rawText);
-  const clean = bits.map(b => b.split("").map(bitToLevel).join(" ")).join("\n"); // keep per-char lines
+  let rows = [];
+  let decimals = (mode === 'binary7') ? 1 : 2;
+
+  if (mode === 'binary7') {
+    // existing 7-bit path
+    const bits = ascii7BitsForText(rawText);
+    rows = bits.map(b => b.split("").map(bit => (bit === "1" ? BINARY_HIGH : BINARY_LOW)));
+    decimals = 1; // one decimal for binary
+  } else {
+    // 32-level direct mapping
+    rows = encodeBase32_levels(rawText);
+    decimals = 2; // two decimals for 32-level (your request)
+  }
+
+  const clean = rows.map(arr => arr.map(v => fmt(v, decimals)).join(" ")).join("\n");
   document.getElementById('encode-output').textContent = clean || "(no input)";
 
-  const amp = Number(document.getElementById("noise").value);
-  document.getElementById('encode-output-noisy').textContent =
-    clean ? addNoise(clean, amp) : "";
+  updateNoisyFromClean(); // ← starts from the new clean text
 
-  renderGraph(); // ← draw after encoding
 };
+
+
 
 
 const noiseSlider = document.getElementById("noise");
 
 noiseSlider.addEventListener("input", () => {
-  const amp = Number(noiseSlider.value);
-  const clean = document.getElementById('encode-output').textContent;
-  document.getElementById('encode-output-noisy').textContent =
-    clean ? addNoise(clean, amp) : "";
-  renderGraph();
-
-  // stop previous animation if running
   if (noiseInterval) clearInterval(noiseInterval);
+  updateNoisyFromClean();
 
-  // if amp = 0, do not animate
+  const amp = Number(noiseSlider.value);
   if (amp === 0) return;
 
-  // animation: re-apply noise every 0.2 seconds
-  noiseInterval = setInterval(() => {
-    const cleanNow = document.getElementById('encode-output').textContent;
-    document.getElementById('encode-output-noisy').textContent =
-      cleanNow ? addNoise(cleanNow, Number(noiseSlider.value)) : "";
-    renderGraph();
-  }, 200); // 200 ms
+  noiseInterval = setInterval(updateNoisyFromClean, 200);
 });
 
 // restart animation to respect any existing slider value
@@ -217,7 +400,9 @@ if (amp > 0) {
   }, 200);
 }
 
-
+modeEncodeSel.addEventListener('change', () => {
+  updateNoisyFromClean();
+});
 
 
 function decodeLevelsToText(input) {
@@ -245,7 +430,105 @@ function decodeLevelsToText(input) {
 }
 
 document.getElementById('decode-btn').onclick = () => {
-  const raw = document.getElementById('decode-input').value;
-  const decoded = decodeLevelsToText(raw);
-  document.getElementById('decode-output').textContent = decoded || "(no output)";
+  const mode = modeDecodeSel ? modeDecodeSel.value : 'binary7';
+  const raw = document.getElementById('decode-input').value.trim();
+  if (!raw) { 
+    document.getElementById('decode-output').textContent = "(no output)"; 
+    return; 
+  }
+
+  const levels = raw.split(/\s+/).map(Number).filter(n => Number.isFinite(n));
+  let text = "";
+
+  if (mode === 'binary7') {
+    // threshold → bits → chunks of 7 → ASCII
+    const bits = levels.map(v => (v >= THRESH ? "1" : "0")).join("");
+    const chars = [];
+    for (let i = 0; i + 7 <= bits.length; i += 7) {
+      chars.push(String.fromCharCode(parseInt(bits.slice(i, i+7), 2)));
+    }
+    text = chars.join("").toUpperCase();     // ← enforce uppercase
+  } else {
+    // 32-level nearest-match decoding
+    text = decodeBase32_fromLevels(levels).toUpperCase(); // ← enforce uppercase
+  }
+
+  document.getElementById('decode-output').textContent = text || "(no output)";
 };
+
+
+
+// ENCODE (32-level): one number per character, one line per character
+function encodeBase32_levels(text) {
+  const rows = [];
+  for (const ch of text) {
+    const idx = CHAR_TO_INDEX[ch];
+    if (!idx) continue; // skip unsupported chars
+    const level = indexToLevel(idx);
+    rows.push([level]);
+  }
+  return rows; // array of arrays; each row has one level
+}
+
+// DECODE (32-level): nearest-level wins
+function decodeBase32_fromLevels(levelsFlat) {
+  const out = [];
+  for (const v of levelsFlat) {
+    const idx = levelToNearestIndex(v);
+    const ch = INDEX_TO_CHAR[idx] || '';
+    out.push(ch);
+  }
+  return out.join('');
+}
+
+function setFrozen(state) {
+  isFrozen = state;
+
+  // button label
+  if (freezeBtn) freezeBtn.textContent = isFrozen ? 'Unfreeze noise' : 'Freeze noise';
+
+  // stop or start interval
+  if (noiseInterval) { clearInterval(noiseInterval); noiseInterval = null; }
+
+  // disable/enable slider
+  const slider = document.getElementById('noise');
+  if (slider) slider.disabled = isFrozen;
+
+  // when freezing, do NOT recompute noise; keep current numbers and graph
+  // when unfreezing, resume animation if amp > 0
+  if (!isFrozen) {
+    const amp = Number(slider?.value || 0);
+    if (amp > 0) noiseInterval = setInterval(updateNoisyFromClean, 200);
+  }
+
+  renderGraph(); // redraw using current values
+}
+
+
+//Freeze Button
+if (freezeBtn) {
+  freezeBtn.addEventListener('click', async () => {
+    // If we are about to freeze, ensure the current noisy text exists
+    if (!isFrozen) {
+      // if no noisy values yet, generate once from the clean text
+      const noisyBox = document.getElementById('encode-output-noisy');
+      if (noisyBox && (!noisyBox.textContent || !noisyBox.textContent.trim())) {
+        updateNoisyFromClean();
+      }
+    }
+    setFrozen(!isFrozen);
+
+    // Auto-copy on freeze
+    //if (isFrozen) {
+    //  const ok = await copyTextFrom('encode-output-noisy');
+    //  showCopyStatus(ok ? 'Copied noisy values' : 'Copy failed', ok);
+    //}
+  });
+}
+
+if (copyNoisyBtn) {
+  copyNoisyBtn.addEventListener('click', async () => {
+    const ok = await copyTextFrom('encode-output-noisy');
+    showCopyStatus(ok ? 'Copied noisy values' : 'Copy failed', ok);
+  });
+}

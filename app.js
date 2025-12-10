@@ -238,12 +238,12 @@ function drawSignal(canvas, cleanArr, noisyArr) {
   });
 
   // threshold marker
-  const yThresh = yOf(THRESH);
-  ctx.strokeStyle = 'rgba(255,59,59,0.25)';
-  ctx.beginPath(); ctx.moveTo(mL, yThresh); ctx.lineTo(mL + w, yThresh); ctx.stroke();
-  ctx.fillStyle = '#ff3b3b';
-  ctx.font = '11px "Cascadia Code", "Fira Code", "Consolas", "Courier New", monospace';
-  ctx.fillText(THRESH.toString(), 6, yThresh - 2);
+  //const yThresh = yOf(THRESH);
+  //ctx.strokeStyle = 'rgba(255,59,59,0.25)';
+  //ctx.beginPath(); ctx.moveTo(mL, yThresh); ctx.lineTo(mL + w, yThresh); ctx.stroke();
+  //ctx.fillStyle = '#ff3b3b';
+  //ctx.font = '11px "Cascadia Code", "Fira Code", "Consolas", "Courier New", monospace';
+  //ctx.fillText(THRESH.toString(), 6, yThresh - 2);
 
   // choose x scale based on the longer of the two arrays
   const n = Math.max(cleanArr.length, noisyArr.length);

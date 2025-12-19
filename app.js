@@ -25,24 +25,105 @@ function clamp(v, lo, hi) {
 const BINARY_LOW = 0.0, BINARY_HIGH = 8.0, THRESH = 5.0;
 const SCALE_MAX = 10.0;
 
-// 32-level direct character→level mapping (indices 1..32)
-const STEP32 = 0.309375; // 32 * STEP32 = 9.9
-const INDEX_TO_CHAR = [
-  null, // pad to make 1-based
-  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',' ', '!', '?', ',', '.', '&'
+// 32-level direct character→level mapping based on the Direct 32-Level Table
+// Each character maps to the center of its range
+const CHAR_TO_LEVEL = {
+  'A': 0.15,  // 0.0 to 0.3
+  'B': 0.5,   // 0.4 to 0.6
+  'C': 0.8,   // 0.7 to 0.9
+  'D': 1.15,  // 1.0 to 1.3
+  'E': 1.5,   // 1.4 to 1.6
+  'F': 1.8,   // 1.7 to 1.9
+  'G': 2.15,  // 2.0 to 2.3
+  'H': 2.5,   // 2.4 to 2.6
+  'I': 2.8,   // 2.7 to 2.9
+  'J': 3.15,  // 3.0 to 3.3
+  'K': 3.5,   // 3.4 to 3.6
+  'L': 3.8,   // 3.7 to 3.9
+  'M': 4.15,  // 4.0 to 4.3
+  'N': 4.5,   // 4.4 to 4.6
+  'O': 4.8,   // 4.7 to 4.9
+  'P': 5.15,  // 5.0 to 5.3
+  'Q': 5.65,  // 5.4 to 5.9
+  'R': 6.15,  // 6.0 to 6.3
+  'S': 6.5,   // 6.4 to 6.6
+  'T': 6.8,   // 6.7 to 6.9
+  'U': 7.15,  // 7.0 to 7.3
+  'V': 7.5,   // 7.4 to 7.6
+  'W': 7.8,   // 7.7 to 7.9
+  'X': 8.15,  // 8.0 to 8.3
+  'Y': 8.5,   // 8.4 to 8.6
+  'Z': 8.8,   // 8.7 to 8.9
+  ' ': 9.15,  // 9.0 to 9.3 [space]
+  '!': 9.5,   // 9.4 to 9.6
+  '?': 9.8,   // 9.7 to 9.9
+  // Additional characters not in table - using extrapolated values
+  ',': 0.15,  // Map to same as 'A' for now
+  '.': 0.15,  // Map to same as 'A' for now
+  '&': 0.15   // Map to same as 'A' for now
+};
+
+// Reverse mapping: level ranges to characters
+const LEVEL_RANGES = [
+  { min: 0.0, max: 0.3, char: 'A' },
+  { min: 0.4, max: 0.6, char: 'B' },
+  { min: 0.7, max: 0.9, char: 'C' },
+  { min: 1.0, max: 1.3, char: 'D' },
+  { min: 1.4, max: 1.6, char: 'E' },
+  { min: 1.7, max: 1.9, char: 'F' },
+  { min: 2.0, max: 2.3, char: 'G' },
+  { min: 2.4, max: 2.6, char: 'H' },
+  { min: 2.7, max: 2.9, char: 'I' },
+  { min: 3.0, max: 3.3, char: 'J' },
+  { min: 3.4, max: 3.6, char: 'K' },
+  { min: 3.7, max: 3.9, char: 'L' },
+  { min: 4.0, max: 4.3, char: 'M' },
+  { min: 4.4, max: 4.6, char: 'N' },
+  { min: 4.7, max: 4.9, char: 'O' },
+  { min: 5.0, max: 5.3, char: 'P' },
+  { min: 5.4, max: 5.9, char: 'Q' },
+  { min: 6.0, max: 6.3, char: 'R' },
+  { min: 6.4, max: 6.6, char: 'S' },
+  { min: 6.7, max: 6.9, char: 'T' },
+  { min: 7.0, max: 7.3, char: 'U' },
+  { min: 7.4, max: 7.6, char: 'V' },
+  { min: 7.7, max: 7.9, char: 'W' },
+  { min: 8.0, max: 8.3, char: 'X' },
+  { min: 8.4, max: 8.6, char: 'Y' },
+  { min: 8.7, max: 8.9, char: 'Z' },
+  { min: 9.0, max: 9.3, char: ' ' },
+  { min: 9.4, max: 9.6, char: '!' },
+  { min: 9.7, max: 9.9, char: '?' }
 ];
-const CHAR_TO_INDEX = Object.fromEntries(INDEX_TO_CHAR
-  .map((ch,i)=>[ch,i]).filter(([ch,i])=>ch && i>=1));
 
-// level for index i (1..32): i * STEP32
-function indexToLevel(i) { return i * STEP32; }
+// Get level for a character
+function charToLevel(ch) {
+  return CHAR_TO_LEVEL[ch] || 0.15; // default to 'A' level if unknown
+}
 
-// nearest index from a numeric level value
-function levelToNearestIndex(v) {
-  let i = Math.round(v / STEP32);
-  if (i < 1) i = 1;
-  if (i > 32) i = 32;
-  return i;
+// Find nearest character from a numeric level value
+function levelToChar(v) {
+  // Find the range that contains this value
+  for (const range of LEVEL_RANGES) {
+    if (v >= range.min && v <= range.max) {
+      return range.char;
+    }
+  }
+
+  // If not in any range, find the closest range by midpoint
+  let closestChar = 'A';
+  let minDist = Infinity;
+
+  for (const range of LEVEL_RANGES) {
+    const mid = (range.min + range.max) / 2;
+    const dist = Math.abs(v - mid);
+    if (dist < minDist) {
+      minDist = dist;
+      closestChar = range.char;
+    }
+  }
+
+  return closestChar;
 }
 
 //To help auto-copy
@@ -499,20 +580,17 @@ document.getElementById('decode-btn').onclick = () => {
 function encodeBase32_levels(text) {
   const rows = [];
   for (const ch of text) {
-    const idx = CHAR_TO_INDEX[ch];
-    if (!idx) continue; // skip unsupported chars
-    const level = indexToLevel(idx);
+    const level = charToLevel(ch);
     rows.push([level]);
   }
   return rows; // array of arrays; each row has one level
 }
 
-// DECODE (32-level): nearest-level wins
+// DECODE (32-level): find character by range matching
 function decodeBase32_fromLevels(levelsFlat) {
   const out = [];
   for (const v of levelsFlat) {
-    const idx = levelToNearestIndex(v);
-    const ch = INDEX_TO_CHAR[idx] || '';
+    const ch = levelToChar(v);
     out.push(ch);
   }
   return out.join('');

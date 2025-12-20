@@ -92,7 +92,7 @@ function updateNoisyFromClean() {
   if (!clean || !clean.trim()) { setNoisyColor(false); renderGraph(); return; }
 
   const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
-  const decimals = (mode === 'binary7') ? 1 : 2;
+  const decimals = 1; // always use 1 decimal place
   const amp = Number(noiseSlider?.value || 0);
 
   document.getElementById('encode-output-noisy').textContent =
@@ -158,8 +158,8 @@ function fmt(n, decimals) { return n.toFixed(decimals); }
 function jitterValue(baseValue, amp, mode) {
   const isBinaryLow = mode === 'binary7' && Math.abs(baseValue - BINARY_LOW) < 1e-9;
   const jitter = isBinaryLow ? Math.random() * amp : (Math.random() * 2 - 1) * amp;
-  const maxValue = mode === 'binary7' ? 20.0 : 32.0;
-  return clamp(baseValue + jitter, 0.0, maxValue);
+  // Use 32.0 max for both modes to allow noise on high values to be both additive and subtractive
+  return clamp(baseValue + jitter, 0.0, 32.0);
 }
 
 // apply noise U[-Δ, +Δ], except binary lows only get additive noise
@@ -311,7 +311,7 @@ function renderGraph() {
 
   const amp = Number(document.getElementById('noise')?.value || 0);
   const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
-  const decimals = (mode === 'binary7') ? 1 : 2;
+  const decimals = 1; // always use 1 decimal place
 
   const cleanText = document.getElementById('encode-output').textContent;
   const cleanSymbols = parseLevels(cleanText);
@@ -380,17 +380,15 @@ document.getElementById('encode-btn').onclick = () => {
   const rawText = v.text; // already uppercased and filtered
 
   let rows = [];
-  let decimals = (mode === 'binary7') ? 1 : 2;
+  const decimals = 1; // always use 1 decimal place
 
   if (mode === 'binary7') {
     // existing 7-bit path
     const bits = ascii7BitsForText(rawText);
     rows = bits.map(b => b.split("").map(bit => (bit === "1" ? BINARY_HIGH : BINARY_LOW)));
-    decimals = 1; // one decimal for binary
   } else {
     // 32-level direct mapping
     rows = encodeBase32_levels(rawText);
-    decimals = 2; // two decimals for 32-level (your request)
   }
 
   const clean = rows.map(arr => arr.map(v => fmt(v, decimals)).join(" ")).join("\n");
@@ -413,7 +411,7 @@ noiseSlider.addEventListener("input", () => {
   if (amp === 0) return;
 
   const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
-  const decimals = (mode === 'binary7') ? 1 : 2;
+  const decimals = 1; // always use 1 decimal place
   noiseInterval = setInterval(() => {
     const cleanNow = document.getElementById('encode-output').textContent;
     document.getElementById('encode-output-noisy').textContent =
@@ -428,7 +426,7 @@ const amp = Number(noiseSlider.value);
 if (noiseInterval) clearInterval(noiseInterval);
 if (amp > 0) {
   const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
-  const decimals = (mode === 'binary7') ? 1 : 2;
+  const decimals = 1; // always use 1 decimal place
   noiseInterval = setInterval(() => {
     const cleanNow = document.getElementById('encode-output').textContent;
     document.getElementById('encode-output-noisy').textContent =

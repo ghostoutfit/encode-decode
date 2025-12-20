@@ -21,15 +21,15 @@ function clamp(v, lo, hi) {
   return Math.min(hi, Math.max(lo, v));
 }
 
-// Binary centers and threshold (unchanged)
-const BINARY_LOW = 0.0, BINARY_HIGH = 8.0, THRESH = 5.0;
-const SCALE_MAX = 10.0;
+// Binary centers and threshold
+const BINARY_LOW = 0.0, BINARY_HIGH = 20.0, THRESH = 10.0;
+const SCALE_MAX = 32.0;
 
 // 32-level direct character→level mapping (indices 1..32)
-const STEP32 = 0.309375; // 32 * STEP32 = 9.9
+const STEP32 = 1.0; // each index maps to its integer value (1→1.0, 2→2.0, ... 32→32.0)
 const INDEX_TO_CHAR = [
   null, // pad to make 1-based
-  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',' ', '!', '?', ',', '.', '&'
+  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','.', ',', '!', '?', '&', ' '
 ];
 const CHAR_TO_INDEX = Object.fromEntries(INDEX_TO_CHAR
   .map((ch,i)=>[ch,i]).filter(([ch,i])=>ch && i>=1));
@@ -158,7 +158,8 @@ function fmt(n, decimals) { return n.toFixed(decimals); }
 function jitterValue(baseValue, amp, mode) {
   const isBinaryLow = mode === 'binary7' && Math.abs(baseValue - BINARY_LOW) < 1e-9;
   const jitter = isBinaryLow ? Math.random() * amp : (Math.random() * 2 - 1) * amp;
-  return clamp(baseValue + jitter, 0.0, SCALE_MAX);
+  const maxValue = mode === 'binary7' ? 20.0 : 32.0;
+  return clamp(baseValue + jitter, 0.0, maxValue);
 }
 
 // apply noise U[-Δ, +Δ], except binary lows only get additive noise
@@ -223,11 +224,11 @@ function drawSignal(canvas, cleanArr, noisyArr) {
   ctx.moveTo(mL, mT); ctx.lineTo(mL, mT + h); ctx.lineTo(mL + w, mT + h);
   ctx.stroke();
 
-  // value→y map (0..10)
+  // value→y map (0..32)
   const yOf = v => mT + h - (v / SCALE_MAX) * h;
 
-  // reference lines: 0,2,4,6,8,10 plus threshold at 5
-  const ticks = [0, 2, 4, 6, 8, 10];
+  // reference lines: 0, 10, 20, 30
+  const ticks = [0, 10, 20, 30];
   ticks.forEach(v => {
     const y = yOf(v);
     ctx.strokeStyle = 'rgba(0,255,149,0.15)';

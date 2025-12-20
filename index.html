@@ -9,13 +9,13 @@
   <div class="app-shell">
     <header>
       <div id="tabs" role="tablist">
-        <div id="tab-encode" class="tab active" role="tab" aria-selected="true" aria-controls="encode-view">Encoder Tab</div>
-        <div id="tab-decode" class="tab" role="tab" aria-selected="false" aria-controls="decode-view">Decoder Tab</div>
+        <div id="tab-encode" class="tab" role="tab" aria-selected="false" aria-controls="encode-view">Encoder Tab</div>
+        <div id="tab-decode" class="tab active" role="tab" aria-selected="true" aria-controls="decode-view">Decoder Tab</div>
       </div>
     </header>
 
     <div id="panel">
-      <div id="encode-view" class="view">
+      <div id="encode-view" class="view hidden">
         <h1>Encode a message into digital values:</h1>
 
         <h4>Type up to 9 characters in the boxes. Then choose an Encoding Mode and click Encode. Allowed characters include A–Z, space, . , ! ? &</h4>
@@ -38,8 +38,8 @@
         <div class="mode-row">
           <label for="mode-encode">Encoding Mode:</label>
           <select id="mode-encode">
-            <option value="binary7" selected>Binary (ASCII 7-bit)</option>
-            <option value="base32">32-level (Direct Map)</option>
+            <option value="binary7">Binary (ASCII 7-bit)</option>
+            <option value="base32" selected>32-level (Direct Map)</option>
           </select>
         </div>
 
@@ -73,7 +73,7 @@
         <pre id="encode-output"></pre>
       </div>
 
-      <div id="decode-view" class="view hidden" role="tabpanel">
+      <div id="decode-view" class="view" role="tabpanel">
         <h1>Decode a message from digital values:</h1>
 
         <h4>Type or paste values into the box. Then choose a Decoding Mode and click Decode.</h4>
@@ -83,8 +83,8 @@
         <div class="mode-row">
           <label for="mode-decode">Decoding Mode:</label>
           <select id="mode-decode">
-            <option value="binary7" selected>Binary (ASCII 7-bit)</option>
-            <option value="base32">32-level (Direct Map)</option>
+            <option value="binary7">Binary (ASCII 7-bit)</option>
+            <option value="base32" selected>32-level (Direct Map)</option>
           </select>
         </div>
         <br> </br>

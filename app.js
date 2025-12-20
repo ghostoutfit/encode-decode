@@ -93,7 +93,7 @@ function updateNoisyFromClean() {
 
   const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
   const decimals = 1; // always use 1 decimal place
-  const amp = Number(noiseSlider?.value || 0);
+  const amp = sliderToAmplitude(Number(noiseSlider?.value || 0));
 
   document.getElementById('encode-output-noisy').textContent =
     addNoise(clean, amp, decimals, mode);
@@ -154,6 +154,14 @@ document.querySelectorAll('#char-grid .char').forEach(el => {
 
 
 function fmt(n, decimals) { return n.toFixed(decimals); }
+
+// Convert slider value to effective amplitude with a power curve
+// This makes the lower end grow more slowly
+// At slider = 1.5 (1/8 of max 12), amp ≈ 0.667 (gives 25% error rate for 32-level)
+// At slider = 12, amp = 12
+function sliderToAmplitude(sliderValue) {
+  return 0.47 * Math.pow(sliderValue, 1.39);
+}
 
 function jitterValue(baseValue, amp, mode) {
   const isBinaryLow = mode === 'binary7' && Math.abs(baseValue - BINARY_LOW) < 1e-9;
@@ -309,7 +317,7 @@ function renderGraph() {
   const canvas = document.getElementById('signal');
   if (!canvas) return;
 
-  const amp = Number(document.getElementById('noise')?.value || 0);
+  const amp = sliderToAmplitude(Number(document.getElementById('noise')?.value || 0));
   const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
   const decimals = 1; // always use 1 decimal place
 
@@ -407,9 +415,10 @@ noiseSlider.addEventListener("input", () => {
   if (noiseInterval) clearInterval(noiseInterval);
   updateNoisyFromClean();
 
-  const amp = Number(noiseSlider.value);
-  if (amp === 0) return;
+  const sliderVal = Number(noiseSlider.value);
+  if (sliderVal === 0) return;
 
+  const amp = sliderToAmplitude(sliderVal);
   const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
   const decimals = 1; // always use 1 decimal place
   noiseInterval = setInterval(() => {
@@ -422,9 +431,10 @@ noiseSlider.addEventListener("input", () => {
 });
 
 // restart animation to respect any existing slider value
-const amp = Number(noiseSlider.value);
+const sliderVal = Number(noiseSlider.value);
 if (noiseInterval) clearInterval(noiseInterval);
-if (amp > 0) {
+if (sliderVal > 0) {
+  const amp = sliderToAmplitude(sliderVal);
   const mode = modeEncodeSel ? modeEncodeSel.value : 'binary7';
   const decimals = 1; // always use 1 decimal place
   noiseInterval = setInterval(() => {

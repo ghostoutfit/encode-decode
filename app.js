@@ -13,7 +13,7 @@ const copyStatus = document.getElementById('copy-status');
 
 // map bit → physical level
 function bitToLevel(b) {
-  return b === "1" ? "8.0" : "0.0";
+  return b === "1" ? "20.0" : "0.0";
 }
 
 // clamp helper
@@ -34,12 +34,12 @@ const INDEX_TO_CHAR = [
 const CHAR_TO_INDEX = Object.fromEntries(INDEX_TO_CHAR
   .map((ch,i)=>[ch,i]).filter(([ch,i])=>ch && i>=1));
 
-// level for index i (1..32): i * STEP32
-function indexToLevel(i) { return i * STEP32; }
+// level for index i (1..32): i + 0.5 (e.g., 1→1.5, 2→2.5, etc.)
+function indexToLevel(i) { return i + 0.5; }
 
-// nearest index from a numeric level value
+// nearest index from a numeric level value (1.0-1.9→1, 2.0-2.9→2, etc.)
 function levelToNearestIndex(v) {
-  let i = Math.round(v / STEP32);
+  let i = Math.floor(v);
   if (i < 1) i = 1;
   if (i > 32) i = 32;
   return i;
